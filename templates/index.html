@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Nhận Diện Biển Số Xe</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3B82F6;
+            --primary-dark: #2563EB;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --dark: #1F2937;
+            --light: #F3F4F6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+
+        .upload-zone {
+            border: 3px dashed #CBD5E1;
+            border-radius: 12px;
+            padding: 60px 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--light);
+        }
+
+        .upload-zone:hover {
+            border-color: var(--primary);
+            background: white;
+            transform: scale(1.01);
+        }
+
+        .upload-zone.dragover {
+            border-color: var(--success);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .upload-zone i {
+            font-size: 4rem;
+            color: var(--primary);
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-section {
+            margin-top: 30px;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            border-left: 4px solid var(--success);
+        }
+
+        .plate-text {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--dark);
+            letter-spacing: 2px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .confidence-bar {
+            height: 8px;
+            background: #E5E7EB;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success) 0%, var(--primary) 100%);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .image-preview {
+            margin-top: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .image-preview img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #E5E7EB;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .stat-item {
+            background: var(--light);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            color: #6B7280;
+            font-size: 0.875rem;
+            margin-top: 4px;
+        }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #E5E7EB;
+        }
+
+        .history-table th {
+            background: var(--light);
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .history-table tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .tab-nav {
+            display: flex;
+            border-bottom: 2px solid #E5E7EB;
+            margin-bottom: 24px;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            border: none;
+            background: transparent;
+            font-weight: 600;
+            color: #6B7280;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--primary);
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: white;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            .plate-text {
+                font-size: 1.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-8">
+        <div class="card">
+            <div class="header">
+                <h1><i class="fas fa-car"></i> Hệ Thống Nhận Diện Biển Số Xe</h1>
+                <p>Intelligent Traffic System - ITS License Plate Recognition</p>
+            </div>
+
+            <div class="p-6">
+                <div class="tab-nav">
+                    <button class="tab-btn active" onclick="switchTab('detect')">
+                        <i class="fas fa-search"></i> Nhận Diện
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('history')">
+                        <i class="fas fa-history"></i> Lịch Sử
+                    </button>
+                </div>
+
+                <!-- Detect Tab -->
+                <div id="detect-tab" class="tab-content active">
+                    <div id="upload-area">
+                        <div class="upload-zone" id="dropzone">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <h3 class="text-xl font-semibold mb-2">Kéo thả ảnh hoặc nhấn để chọn</h3>
+                            <p class="text-gray-500 mb-4">Hỗ trợ: JPG, PNG (tối đa 10MB)</p>
+                            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+                                <i class="fas fa-folder-open mr-2"></i> Chọn File
+                            </button>
+                            <input type="file" id="file-input" accept="image/*" style="display: none;">
+                        </div>
+                    </div>
+
+                    <div class="loading" id="loading">
+                        <div class="spinner"></div>
+                        <p class="text-gray-600">Đang xử lý nhận diện...</p>
+                    </div>
+
+                    <div id="results" class="results-section" style="display: none;">
+                        <div class="result-card" id="result-card">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <span class="text-sm text-gray-500">Biển số nhận diện được:</span>
+                                    <div class="plate-text mt-1" id="plate-text">-</div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="badge badge-success" id="vehicle-type">-</span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                                <div>
+                                    <span class="text-sm text-gray-500">Độ chính xác</span>
+                                    <div class="font-semibold text-lg" id="accuracy">-</div>
+                                    <div class="confidence-bar">
+                                        <div class="confidence-fill" id="confidence-bar" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-sm text-gray-500">Thời gian xử lý</span>
+                                    <div class="font-semibold text-lg" id="process-time">-</div>
+                                </div>
+                                <div>
+                                    <span class="text-sm text-gray-500">Kích thước ảnh</span>
+                                    <div class="font-semibold text-lg" id="img-size">-</div>
+                                </div>
+                                <div>
+                                    <span class="text-sm text-gray-500">Tổng biển số</span>
+                                    <div class="font-semibold text-lg" id="total-plates">-</div>
+                                </div>
+                            </div>
+
+                            <div class="image-preview" id="image-preview">
+                                <img id="result-image" src="" alt="Kết quả nhận diện">
+                            </div>
+                        </div>
+
+                        <div class="text-center mt-4">
+                            <button class="btn btn-primary" onclick="resetForm()">
+                                <i class="fas fa-redo mr-2"></i> Nhận Diện Ảnh Khác
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="error-message" class="mt-4 p-4 bg-red-100 text-red-700 rounded-lg" style="display: none;">
+                        <i class="fas fa-exclamation-circle mr-2"></i>
+                        <span id="error-text"></span>
+                    </div>
+                </div>
+
+                <!-- History Tab -->
+                <div id="history-tab" class="tab-content">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">Lịch Sử Nhận Diện</h3>
+                        <button class="btn btn-primary" onclick="loadHistory()">
+                            <i class="fas fa-sync-alt mr-2"></i> Làm Mới
+                        </button>
+                    </div>
+
+                    <div class="stats-grid" id="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="stat-total">0</div>
+                            <div class="stat-label">Tổng số nhận diện</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="stat-avg-conf">0%</div>
+                            <div class="stat-label">Độ chính xác TB</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="stat-avg-time">0ms</div>
+                            <div class="stat-label">Thời gian TB</div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="history-table" id="history-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Biển số</th>
+                                    <th>Loại xe</th>
+                                    <th>Độ chính xác</th>
+                                    <th>Thời gian</th>
+                                    <th>Thời gian nhận diện</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-body">
+                                <tr>
+                                    <td colspan="6" class="text-center text-gray-500 py-8">
+                                        Chưa có dữ liệu
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer mt-6">
+            <p>Hệ thống Nhận Diện Biển Số Xe - ITS Application</p>
+        </div>
+    </div>
+
+    <script>
+        // File input handling
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Handle file upload
+        async function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError('Vui lòng chọn file ảnh!');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showError('File quá lớn! Vui lòng chọn file nhỏ hơn 10MB.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Show loading
+            document.getElementById('upload-area').style.display = 'none';
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('error-message').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/detect', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    showError(data.detail || 'Có lỗi xảy ra khi nhận diện!');
+                }
+            } catch (error) {
+                showError('Lỗi kết nối: ' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('active');
+            }
+        }
+
+        // Display results
+        function displayResults(data) {
+            document.getElementById('results').style.display = 'block';
+
+            if (data.results && data.results.length > 0) {
+                const result = data.results[0];
+
+                document.getElementById('plate-text').textContent = result.plate_text;
+                document.getElementById('vehicle-type').textContent = result.vehicle_type;
+                document.getElementById('accuracy').textContent = (result.confidence * 100).toFixed(1) + '%';
+                document.getElementById('confidence-bar').style.width = (result.confidence * 100) + '%';
+                document.getElementById('process-time').textContent = (data.total_time * 1000).toFixed(0) + 'ms';
+                document.getElementById('total-plates').textContent = data.total_plates;
+
+                if (data.image_result) {
+                    document.getElementById('result-image').src = 'data:image/jpeg;base64,' + data.image_result;
+                    document.getElementById('image-preview').style.display = 'block';
+                }
+            } else {
+                document.getElementById('plate-text').textContent = 'Không tìm thấy biển số';
+                document.getElementById('vehicle-type').textContent = '-';
+            }
+        }
+
+        // Show error message
+        function showError(message) {
+            document.getElementById('error-text').textContent = message;
+            document.getElementById('error-message').style.display = 'block';
+            document.getElementById('upload-area').style.display = 'block';
+        }
+
+        // Reset form
+        function resetForm() {
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('upload-area').style.display = 'block';
+            document.getElementById('file-input').value = '';
+            document.getElementById('error-message').style.display = 'none';
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.closest('.tab-btn').classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // Load history if needed
+            if (tabName === 'history') {
+                loadHistory();
+                loadStats();
+            }
+        }
+
+        // Load history
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/history?limit=50');
+                const data = await response.json();
+
+                const tbody = document.getElementById('history-body');
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-500 py-8">Chưa có dữ liệu</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map(item => `
+                    <tr>
+                        <td>${item.id}</td>
+                        <td class="font-semibold">${item.plate_text}</td>
+                        <td><span class="badge badge-success">${item.vehicle_type || '-'}</span></td>
+                        <td>${(item.confidence * 100).toFixed(1)}%</td>
+                        <td>${item.processing_time ? (item.processing_time * 1000).toFixed(0) + 'ms' : '-'}</td>
+                        <td class="text-gray-500">${new Date(item.created_at).toLocaleString('vi-VN')}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading history:', error);
+            }
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+
+                document.getElementById('stat-total').textContent = data.total_detections || 0;
+                document.getElementById('stat-avg-conf').textContent = ((data.avg_confidence || 0) * 100).toFixed(1) + '%';
+                document.getElementById('stat-avg-time').textContent = ((data.avg_processing_time || 0) * 1000).toFixed(0) + 'ms';
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+    </script>
+</body>
+</html>
