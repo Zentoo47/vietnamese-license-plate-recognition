@@ -1,0 +1,59 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Runtime data
+/data/
+/uploads/
+/results/
+/app/results/
+/debug_crops/
+
+# ML datasets and generated training output
+/src/dataset/images/
+/src/dataset/labels/
+/src/dataset_yolo/
+/src/trained_models/vietnamese_license_plate/
+runs/
+wandb/
+
+# Model weights and large binary artifacts
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+
+# Uploaded/result media
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Keep docs/configs tracked even when media folders are ignored
+!README.md
+!src/dataset/README_DATASET.md
+!src/dataset/data.yaml
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

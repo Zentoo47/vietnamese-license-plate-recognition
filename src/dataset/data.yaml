@@ -1,6 +1,8 @@
-path: D:\ITS_License_Plate_Detection\src\dataset
+path: /content/vietnamese-license-plate-recognition/src/dataset
+
 train: images/train
 val: images/val
+
+nc: 1
 names:
   0: license_plate
-nc: 1

@@ -54,82 +54,211 @@ class OCRRecognizer:
         else:
             gray = plate_img.copy()
 
-        # Resize nếu ảnh quá nhỏ
         h, w = gray.shape
-        if h < 80:
-            scale = 80 / h
-            gray = cv2.resize(gray, None, fx=scale, fy=scale)
+        if h == 0 or w == 0:
+            return gray
 
-        # Tăng tương phản CLAHE
+        target_height = 120
+        if h < target_height:
+            scale = target_height / h
+            gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
-
-        # Denoise nhẹ
         denoised = cv2.fastNlMeansDenoising(enhanced, None, h=10, templateWindowSize=7, searchWindowSize=21)
 
         return denoised
+
+    def _preprocess_variants(self, plate_img: np.ndarray) -> List[np.ndarray]:
+        """Tạo nhiều biến thể ảnh để OCR ổn định hơn với ảnh mờ/tối/chói."""
+        base = self._preprocess_plate(plate_img)
+        if base.size == 0:
+            return [base]
+
+        variants = [base]
+        blur = cv2.GaussianBlur(base, (3, 3), 0)
+        variants.append(blur)
+
+        binary = cv2.adaptiveThreshold(
+            blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 31, 9
+        )
+        variants.append(binary)
+        variants.append(cv2.bitwise_not(binary))
+
+        _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        variants.append(otsu)
+
+        unique = []
+        seen_shapes = set()
+        for image in variants:
+            key = (image.shape, int(image.mean()))
+            if key not in seen_shapes:
+                unique.append(image)
+                seen_shapes.add(key)
+        return unique
 
     def recognize(self, plate_image: np.ndarray) -> List[dict]:
         """Nhận diện text từ ảnh biển số"""
         self._load_reader()
 
-        # Preprocess trước
-        processed = self._preprocess_plate(plate_image)
+        variants = self._preprocess_variants(plate_image)
 
         if self.reader is None:
-            return self._fallback_ocr(processed)
+            return self._fallback_ocr(variants[0])
 
         try:
-            # Convert to RGB
-            if len(processed.shape) == 2:
-                rgb_image = cv2.cvtColor(processed, cv2.COLOR_GRAY2RGB)
-            else:
-                rgb_image = processed
+            best_results = []
+            best_score = -1
 
-            results = self.reader.readtext(rgb_image)
+            for processed in variants:
+                if len(processed.shape) == 2:
+                    rgb_image = cv2.cvtColor(processed, cv2.COLOR_GRAY2RGB)
+                else:
+                    rgb_image = processed
 
-            recognized = []
-            for (bbox, text, conf) in results:
-                if text and len(text.strip()) > 0:
-                    recognized.append({
-                        'text': text.strip(),
-                        'confidence': float(conf),
-                        'bbox': bbox
-                    })
+                results = self.reader.readtext(
+                    rgb_image,
+                    allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.',
+                    decoder='beamsearch',
+                    detail=1,
+                    paragraph=False,
+                    text_threshold=0.35,
+                    low_text=0.25,
+                    link_threshold=0.3
+                )
 
-            return recognized
+                recognized = []
+                for (bbox, text, conf) in results:
+                    cleaned = re.sub(r'[^A-Za-z0-9]', '', text or '').upper()
+                    if cleaned and len(cleaned) >= 2:
+                        recognized.append({
+                            'text': cleaned,
+                            'confidence': float(conf),
+                            'bbox': bbox
+                        })
+
+                candidate_text = ''.join(r['text'] for r in self._sort_ocr_results(recognized))
+                score = self._score_plate_text(candidate_text)
+                if recognized:
+                    score += sum(r['confidence'] for r in recognized) / len(recognized)
+
+                if score > best_score:
+                    best_score = score
+                    best_results = recognized
+
+            return best_results
 
         except Exception as e:
             logger.error(f"OCR error: {e}")
-            return self._fallback_ocr(processed)
+            return self._fallback_ocr(variants[0])
+
+    def _sort_ocr_results(self, results: List[dict]) -> List[dict]:
+        """Sắp xếp OCR theo dòng rồi theo vị trí ngang."""
+        return sorted(
+            results,
+            key=lambda x: (
+                min(p[1] for p in x['bbox']),
+                min(p[0] for p in x['bbox'])
+            )
+        )
 
     def get_text(self, plate_image: np.ndarray) -> str:
         """Lấy text biển số đã format"""
+        text, _confidence, _results = self.get_text_with_confidence(plate_image)
+        return text
+
+    def get_text_with_confidence(self, plate_image: np.ndarray) -> tuple:
+        """Lấy text đã format cùng độ tin cậy OCR đã hiệu chỉnh."""
         results = self.recognize(plate_image)
 
         if not results:
-            return ""
+            return "", 0.0, []
 
-        # Sort by x position
-        sorted_results = sorted(results, key=lambda x: min(p[0] for p in x['bbox']))
+        sorted_results = self._sort_ocr_results(results)
 
-        # Combine text
         full_text = ""
         for r in sorted_results:
             full_text += r['text'] + " "
 
-        return self._format_vietnamese_plate(full_text.strip())
+        formatted = self._format_vietnamese_plate(full_text.strip())
+        ocr_confidence = sum(r['confidence'] for r in sorted_results) / len(sorted_results)
+        confidence = self._calibrated_confidence(formatted, ocr_confidence)
+        return formatted, confidence, sorted_results
+
+    def _calibrated_confidence(self, text: str, ocr_confidence: float) -> float:
+        """Ước lượng confidence thực tế, phạt mạnh nếu sai format biển số VN."""
+        clean = re.sub(r'[^A-Z0-9]', '', (text or '').upper())
+        if not clean:
+            return 0.0
+
+        format_score = self._score_plate_text(clean)
+        format_score = min(format_score / 4.0, 1.0)
+        length_penalty = 1.0 if 7 <= len(clean) <= 9 else 0.55
+        province_bonus = 1.0 if len(clean) >= 2 and clean[:2].isdigit() else 0.65
+        series_bonus = 1.0 if len(clean) >= 3 and clean[2].isalpha() else 0.7
+
+        calibrated = ocr_confidence * (0.45 + 0.55 * format_score)
+        calibrated *= length_penalty * province_bonus * series_bonus
+        return float(max(0.0, min(calibrated, 0.99)))
+
+    def _score_plate_text(self, text: str) -> float:
+        """Chấm điểm ứng viên OCR theo format biển số Việt Nam."""
+        raw = re.sub(r'[^A-Z0-9]', '', (text or '').upper())
+        if not raw:
+            return 0
+
+        formatted = self._format_vietnamese_plate(raw)
+        clean = re.sub(r'[^A-Z0-9]', '', formatted)
+        score = min(len(clean), 9) / 9
+
+        if re.match(r'^\d{2}[A-Z]{1,2}\d{4,5}$', clean):
+            score += 2.0
+        if 7 <= len(clean) <= 9:
+            score += 0.5
+        if clean[:2].isdigit():
+            score += 0.5
+        if len(clean) >= 3 and clean[2].isalpha():
+            score += 0.5
+        return score
 
     def _format_vietnamese_plate(self, text: str) -> str:
         """Format text thành biển số VN chuẩn"""
         if not text:
             return ""
 
-        # Clean text
-        text = text.upper()
-        text = text.replace(" ", "").replace("-", "").replace(".", "").replace(",", "")
-        text = text.replace("O", "0").replace("I", "1").replace("L", "1")
-        text = text.replace("S", "5").replace("B", "8").replace("Z", "2")
+        # Clean text. Do not blindly convert letters such as B/S/Z to digits,
+        # because Vietnamese plates contain real letters in the series section.
+        raw = re.sub(r'[^A-Z0-9]', '', text.upper())
+        if not raw:
+            return ""
+
+        digit_map = str.maketrans({'O': '0', 'Q': '0', 'D': '0', 'I': '1', 'L': '1', 'T': '7'})
+        letter_map = str.maketrans({'0': 'O', '1': 'I', '5': 'S', '8': 'B', '2': 'Z', '4': 'A'})
+
+        def normalize_digit(value: str) -> str:
+            return value.translate(digit_map) if value.isalpha() else value
+
+        def normalize_letter(value: str) -> str:
+            return value.translate(letter_map) if value.isdigit() else value
+
+        chars = list(raw)
+        # First two characters are province digits.
+        for i in range(min(2, len(chars))):
+            chars[i] = normalize_digit(chars[i])
+
+        # Series characters directly after province are letters, optionally followed by one digit.
+        if len(chars) >= 3:
+            chars[2] = normalize_letter(chars[2])
+        if len(chars) >= 4 and chars[3].isalpha():
+            chars[3] = normalize_letter(chars[3])
+
+        # Remaining characters are serial digits.
+        start_digits = 4 if len(chars) >= 4 and chars[3].isalpha() else 3
+        for i in range(start_digits, len(chars)):
+            chars[i] = normalize_digit(chars[i])
+
+        text = ''.join(chars)
 
         # Vietnamese plate patterns
         patterns = [

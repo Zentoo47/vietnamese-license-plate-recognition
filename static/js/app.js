@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeApp() {
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('file-input');
+    initializeVideoUpload();
 
     if (!dropzone || !fileInput) return;
 
@@ -41,6 +42,153 @@ function initializeApp() {
             uploadImage(e.target.files[0]);
         }
     });
+}
+
+function initializeVideoUpload() {
+    const videoDropzone = document.getElementById('video-dropzone');
+    const videoFileInput = document.getElementById('video-file-input');
+
+    if (!videoDropzone || !videoFileInput) return;
+
+    videoDropzone.addEventListener('click', (event) => {
+        if (event.target.tagName !== 'BUTTON') {
+            videoFileInput.click();
+        }
+    });
+
+    videoDropzone.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        videoDropzone.classList.add('dragover');
+    });
+
+    videoDropzone.addEventListener('dragleave', () => {
+        videoDropzone.classList.remove('dragover');
+    });
+
+    videoDropzone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        videoDropzone.classList.remove('dragover');
+        if (event.dataTransfer.files.length > 0) {
+            uploadVideo(event.dataTransfer.files[0]);
+        }
+    });
+
+    videoFileInput.addEventListener('change', (event) => {
+        if (event.target.files.length > 0) {
+            uploadVideo(event.target.files[0]);
+        }
+    });
+}
+
+async function uploadVideo(file) {
+    if (!file.type.startsWith('video/') && !/\.(mp4|mov|avi|mkv|webm)$/i.test(file.name)) {
+        showVideoError('Vui lòng chọn file video hợp lệ!');
+        return;
+    }
+
+    if (file.size > 500 * 1024 * 1024) {
+        showVideoError('File quá lớn! Vui lòng chọn video nhỏ hơn 500MB.');
+        return;
+    }
+
+    showVideoLoading(true);
+    hideVideoError();
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${API_BASE}/detect-video`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            displayVideoResults(data);
+        } else {
+            showVideoError(data.detail || 'Có lỗi xảy ra khi xử lý video!');
+        }
+    } catch (error) {
+        showVideoError('Lỗi kết nối: ' + error.message);
+    } finally {
+        showVideoLoading(false);
+    }
+}
+
+function displayVideoResults(data) {
+    const resultsSection = document.getElementById('video-results');
+    const uploadArea = document.getElementById('video-upload-area');
+    const player = document.getElementById('result-video-player');
+    const totalPlates = document.getElementById('video-total-plates');
+    const processTime = document.getElementById('video-process-time');
+    const plateList = document.getElementById('unique-plate-list');
+
+    if (resultsSection) resultsSection.style.display = 'block';
+    if (uploadArea) uploadArea.style.display = 'none';
+    if (player && data.video_result) {
+        player.src = data.video_result + `?t=${Date.now()}`;
+        player.load();
+    }
+    if (totalPlates) totalPlates.textContent = data.total_plates || 0;
+    if (processTime) processTime.textContent = (data.total_time || 0).toFixed(2) + 's';
+
+    if (plateList) {
+        const results = data.results || [];
+        if (results.length === 0) {
+            plateList.innerHTML = '<div class="text-gray-500 col-span-full">Không tìm thấy biển số rõ ràng trong video.</div>';
+        } else {
+            plateList.innerHTML = results.map(item => `
+                <div class="result-card p-3">
+                    <div class="font-bold text-lg">${escapeHtml(item.plate_text)}</div>
+                    <div class="text-sm text-gray-500">${((item.confidence || 0) * 100).toFixed(1)}%</div>
+                    <div class="text-xs text-gray-400">Frame ${item.frame}</div>
+                </div>
+            `).join('');
+        }
+    }
+}
+
+function resetVideoForm() {
+    const resultsSection = document.getElementById('video-results');
+    const uploadArea = document.getElementById('video-upload-area');
+    const input = document.getElementById('video-file-input');
+    const player = document.getElementById('result-video-player');
+
+    if (resultsSection) resultsSection.style.display = 'none';
+    if (uploadArea) uploadArea.style.display = 'block';
+    if (input) input.value = '';
+    if (player) player.removeAttribute('src');
+    hideVideoError();
+}
+
+function showVideoLoading(show) {
+    const loading = document.getElementById('video-loading');
+    const uploadArea = document.getElementById('video-upload-area');
+    if (loading) loading.classList.toggle('active', show);
+    if (uploadArea && show) uploadArea.style.display = 'none';
+}
+
+function showVideoError(message) {
+    const errorMessage = document.getElementById('video-error-message');
+    const errorText = document.getElementById('video-error-text');
+    if (errorMessage) errorMessage.style.display = 'block';
+    if (errorText) errorText.textContent = message;
+}
+
+function hideVideoError() {
+    const errorMessage = document.getElementById('video-error-message');
+    if (errorMessage) errorMessage.style.display = 'none';
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>'"]/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+    }[char]));
 }
 
 async function uploadImage(file) {
@@ -241,3 +389,5 @@ window.resetForm = resetForm;
 window.switchTab = switchTab;
 window.loadHistory = loadHistory;
 window.loadStats = loadStats;
+window.uploadVideo = uploadVideo;
+window.resetVideoForm = resetVideoForm;

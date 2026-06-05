@@ -1,81 +1,107 @@
-# Dataset cho Train Model Biển Số Xe Việt Nam
+﻿# Dataset cho Train Model Biển Số Xe Việt Nam
+
+Tài liệu này hướng dẫn chuẩn bị dataset YOLO để train model phát hiện biển số xe Việt Nam.
 
 ## Cấu trúc thư mục
 
-```
-dataset/
+```text
+src/dataset/
 ├── images/
-│   ├── train/          # Ảnh train (80%)
+│   ├── train/
 │   │   ├── img001.jpg
-│   │   ├── img002.jpg
 │   │   └── ...
-│   └── val/            # Ảnh validation (20%)
+│   └── val/
 │       ├── img100.jpg
 │       └── ...
 ├── labels/
-│   ├── train/          # Label YOLO cho train
+│   ├── train/
 │   │   ├── img001.txt
 │   │   └── ...
-│   └── val/            # Label YOLO cho validation
+│   └── val/
 │       ├── img100.txt
 │       └── ...
 └── data.yaml
 ```
 
-## Cách thu thập ảnh
+## Nguồn ảnh gợi ý
 
-### 1. Nguồn ảnh
-- Chụp ảnh thực tế từ đường phố
-- Tải từ dataset có sẵn trên Kaggle/HuggingFace
-- Sử dụng ảnh từ camera giao thông
+- Ảnh chụp thực tế từ đường phố/bãi xe/cổng ra vào.
+- Dataset công khai trên Kaggle, HuggingFace hoặc Roboflow.
+- Ảnh từ camera giao thông, camera an ninh hoặc camera điện thoại.
 
-### 2. Dataset có sẵn tham khảo
-- Kaggle: "Vietnamese License Plate Dataset"
-- HuggingFace: Các dataset ANPR cho Đông Nam Á
-- Roboflow: Vietnamese Vehicle License Plates
+## Số lượng ảnh khuyến nghị
 
-### 3. Số lượng ảnh khuyến nghị
-- Tối thiểu: 200-500 ảnh
-- Tốt: 500-1000 ảnh
-- Xuất sắc: 1000+ ảnh
+- Tối thiểu: 200-500 ảnh.
+- Tốt: 500-1000 ảnh.
+- Rất tốt: trên 1000 ảnh, đa dạng góc chụp và điều kiện ánh sáng.
 
-## Cách Label ảnh
+## Label ảnh
 
-### Sử dụng LabelImg
+Có thể dùng LabelImg hoặc Roboflow để gán nhãn bounding box.
+
 ```bash
 pip install labelImg
-labelImg dataset/images/train
+labelImg src/dataset/images/train
 ```
 
-### Format YOLO
-Mỗi file `.txt` chứa thông tin bounding box cho mỗi object trong ảnh:
-```
+## Format YOLO
+
+Mỗi ảnh cần một file `.txt` cùng tên trong thư mục `labels`. Mỗi dòng biểu diễn một object:
+
+```text
 <class_id> <x_center> <y_center> <width> <height>
 ```
 
 Ví dụ:
-```
+
+```text
 0 0.512345 0.623456 0.234567 0.156789
 ```
 
 Trong đó:
-- `0`: class_id (0 = license_plate)
-- `0.512345`: x_center (tọa độ tâm X, từ 0 đến 1)
-- `0.623456`: y_center (tọa độ tâm Y, từ 0 đến 1)
-- `0.234567`: width (chiều rộng, từ 0 đến 1)
-- `0.156789`: height (chiều cao, từ 0 đến 1)
+
+- `0`: class id, với `0 = license_plate`.
+- `x_center`, `y_center`: tọa độ tâm bbox, chuẩn hóa từ 0 đến 1.
+- `width`, `height`: kích thước bbox, chuẩn hóa từ 0 đến 1.
+
+## File data.yaml
+
+Ví dụ cấu hình:
+
+```yaml
+path: src/dataset
+train: images/train
+val: images/val
+
+names:
+  0: license_plate
+```
 
 ## Checklist trước khi train
 
-- [ ] Đã thu thập đủ ảnh (>200 ảnh)
-- [ ] Đã label tất cả ảnh
-- [ ] Đã chia train/val (80/20)
-- [ ] Đã kiểm tra file labels không bị lỗi
-- [ ] Đã tạo file data.yaml
+- [ ] Đã thu thập đủ ảnh.
+- [ ] Đã label toàn bộ ảnh.
+- [ ] Đã chia tập train/val, thường dùng tỷ lệ 80/20.
+- [ ] Đã kiểm tra label không bị lệch bbox hoặc sai class.
+- [ ] Đã cập nhật `data.yaml` đúng đường dẫn.
+- [ ] Đã loại ảnh trùng, ảnh quá mờ hoặc không có biển số rõ.
 
-## Mẹo
+## Mẹo tăng chất lượng model
 
-1. **Đa dạng góc chụp**: Chụp từ nhiều góc khác nhau
-2. **Điều kiện ánh sáng**: Ban ngày, ban đêm, trời mưa
-3. **Loại xe**: Xe máy, ô tô con, xe tải, xe buýt
-4. **Khoảng cách**: Gần, trung bình, xa
+1. Đa dạng góc chụp: chính diện, nghiêng, xa/gần.
+2. Đa dạng ánh sáng: ban ngày, ban đêm, mưa, ngược sáng.
+3. Đa dạng phương tiện: xe máy, ô tô, taxi, xe tải, xe buýt.
+4. Đa dạng loại biển: nền trắng, xanh, vàng; biển một dòng và hai dòng.
+5. Kiểm tra thủ công một phần label sau khi augment hoặc import dataset.
+
+## Train tham khảo
+
+```bash
+yolo detect train data=src/dataset/data.yaml model=yolov8n.pt epochs=50 imgsz=640
+```
+
+Sau khi train xong, copy weight tốt nhất vào:
+
+```text
+src/trained_models/vietnamese_license_plate/weights/best.pt
+```

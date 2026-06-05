@@ -1,62 +1,62 @@
+﻿"""
+License plate detection module using YOLO when available and OpenCV fallback.
 """
-Module phát hiện biển số xe - Sử dụng model chuyên dụng + fallback
-"""
+
+import logging
+import os
+from typing import List, Optional
 
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional
-import os
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 class PlateDetector:
     """
-    Phát hiện biển số xe - Sử dụng:
-    1. Model chuyên dụng (license plate detector)
-    2. YOLOv8 fine-tuned (nếu có)
-    3. OpenCV color-based detection (fallback)
+    Detect license plate regions.
+
+    Priority:
+    1. Custom/fine-tuned YOLO model if available.
+    2. OpenCV color/contour fallback for Vietnamese plates.
     """
 
-    def __init__(self, model_path: Optional[str] = None, conf_threshold: float = 0.5,
-                 max_image_size: int = 800):
-        """
-        Khởi tạo detector
-
-        Args:
-            model_path: Đường dẫn đến model YOLO (.pt file)
-            conf_threshold: Ngưỡng confidence để chấp nhận detection
-            max_image_size: Kích thước tối đa ảnh đầu vào
-        """
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        conf_threshold: float = 0.5,
+        max_image_size: int = 800,
+    ):
         self.conf_threshold = conf_threshold
-        self.model = None
-        self.model_path = model_path or self._get_best_model_path()
         self.max_image_size = max_image_size
+        self.model_path = model_path or self._get_best_model_path()
+        self.model = None
         self._model_loaded = False
-        self._model_type = None  # 'license_plate', 'yolo', 'opencv'
+        self._model_type = None
 
     def _get_best_model_path(self) -> Optional[str]:
-        """Tìm model tốt nhất có sẵn"""
-        models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "src", "trained_models")
+        """Return the best available local YOLO model path."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        models_dir = os.path.join(base_dir, "src", "trained_models")
+        root_models_dir = base_dir
 
-        # Ưu tiên model chuyên dụng
-        priority_models = [
-            "license_plate_yolov8n.pt",
-            "vietnamese_license_plate/weights/best.pt",
-            "anpr_demo.pt",
+        candidates = [
+            os.path.join(models_dir, "license_plate_yolov8n.pt"),
+            os.path.join(models_dir, "vietnamese_license_plate", "weights", "best.pt"),
+            os.path.join(models_dir, "anpr_demo.pt"),
+            os.path.join(root_models_dir, "yolov8m.pt"),
+            os.path.join(root_models_dir, "yolov8n.pt"),
         ]
 
-        for model in priority_models:
-            path = os.path.join(models_dir, model)
+        for path in candidates:
             if os.path.exists(path):
-                logger.info(f"Found pretrained model: {path}")
+                logger.info("Found detector model: %s", path)
                 return path
 
         return None
 
-    def _load_model(self):
-        """Load YOLO model"""
+    def _load_model(self) -> None:
+        """Lazy-load YOLO model, falling back to OpenCV on failure."""
         if self._model_loaded:
             return
 
@@ -64,345 +64,222 @@ class PlateDetector:
             from ultralytics import YOLO
             import torch
 
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f"YOLO device: {device}")
-
             if self.model_path and os.path.exists(self.model_path):
-                logger.info(f"Loading custom model: {self.model_path}")
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                logger.info("Loading YOLO detector on %s: %s", device, self.model_path)
                 self.model = YOLO(self.model_path)
-                self._model_type = 'license_plate'
-            else:
-                # Thử download demo model
-                logger.info("No custom model found. Using OpenCV fallback.")
-                self._model_type = 'opencv'
-
-            if self.model:
                 self.model.to(device)
+                self._model_type = "yolo"
+            else:
+                logger.info("No detector model found; using OpenCV fallback.")
+                self._model_type = "opencv"
+        except Exception as exc:
+            logger.warning("Could not load YOLO detector; using OpenCV fallback: %s", exc)
+            self.model = None
+            self._model_type = "opencv"
 
-            self._model_loaded = True
-
-        except ImportError:
-            logger.warning("ultralytics not installed. Using OpenCV detection.")
-            self._model_type = 'opencv'
-            self._model_loaded = True
+        self._model_loaded = True
 
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
-        """Tiền xử lý ảnh"""
-        h, w = image.shape[:2]
-        if max(h, w) > self.max_image_size:
-            scale = self.max_image_size / max(h, w)
-            image = cv2.resize(image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-        return image
+        """Resize very large images to keep detection fast."""
+        height, width = image.shape[:2]
+        if max(height, width) <= self.max_image_size:
+            return image
+
+        scale = self.max_image_size / max(height, width)
+        new_size = (int(width * scale), int(height * scale))
+        return cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
 
     def _detect_by_color(self, image: np.ndarray) -> List[dict]:
-        """
-        Phát hiện biển số dựa trên màu sắc - cho biển số VN
-        """
+        """Detect Vietnamese-style white/blue plates using OpenCV heuristics."""
         detections = []
-        h, w = image.shape[:2]
+        height, width = image.shape[:2]
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        # ==== Biển số nền XANH chữ TRẮNG ====
-        lower_blue = np.array([100, 50, 50])
-        upper_blue = np.array([130, 255, 255])
-        mask_blue = cv2.inRange(hsv, lower_blue, upper_blue)
+        masks = []
 
-        contours_blue, _ = cv2.findContours(mask_blue, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        blue_mask = cv2.inRange(hsv, np.array([100, 50, 50]), np.array([130, 255, 255]))
+        masks.append((blue_mask, "blue_plate", 0.85))
 
-        for contour in contours_blue:
-            x, y, cw, ch = cv2.boundingRect(contour)
-            aspect = cw / ch if ch > 0 else 0
-            area = cw * ch
+        white_mask = cv2.inRange(gray, 190, 255)
+        masks.append((white_mask, "white_plate", 0.75))
 
-            if 1.5 < aspect < 5.0 and 500 < area < w * h * 0.1:
-                detections.append({
-                    'bbox': (x, y, x + cw, y + ch),
-                    'confidence': 0.85,
-                    'class_id': 0,
-                    'class_name': 'blue_plate'
-                })
+        yellow_mask = cv2.inRange(hsv, np.array([15, 50, 80]), np.array([40, 255, 255]))
+        masks.append((yellow_mask, "yellow_plate", 0.75))
 
-        # ==== Biển số nền TRẮNG chữ ĐEN ====
-        _, thresh_white = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-        contours_white, _ = cv2.findContours(thresh_white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        max_area = width * height * 0.25
 
-        for contour in contours_white:
-            x, y, cw, ch = cv2.boundingRect(contour)
-            aspect = cw / ch if ch > 0 else 0
-            area = cw * ch
+        for mask, class_name, confidence in masks:
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            if 1.5 < aspect < 5.0 and 500 < area < w * h * 0.1:
-                roi = gray[y:y+ch, x:x+cw]
-                if roi.size > 0 and np.mean(roi) > 150:
+            for contour in contours:
+                x, y, box_width, box_height = cv2.boundingRect(contour)
+                if box_height == 0:
+                    continue
+
+                aspect_ratio = box_width / box_height
+                area = box_width * box_height
+                if 1.4 <= aspect_ratio <= 6.5 and 400 <= area <= max_area:
                     detections.append({
-                        'bbox': (x, y, x + cw, y + ch),
-                        'confidence': 0.80,
-                        'class_id': 1,
-                        'class_name': 'white_plate'
-                    })
-
-        # ==== Edge detection ====
-        blurred = cv2.bilateralFilter(gray, 11, 17, 17)
-        edged = cv2.Canny(blurred, 30, 200)
-        contours_edge, _ = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours_edge = sorted(contours_edge, key=cv2.contourArea, reverse=True)[:15]
-
-        for contour in contours_edge:
-            peri = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.018 * peri, True)
-
-            if len(approx) == 4:
-                x, y, cw, ch = cv2.boundingRect(contour)
-                aspect = cw / ch if ch > 0 else 0
-                area = cw * ch
-
-                if 1.5 < aspect < 5.0 and 500 < area < w * h * 0.1:
-                    detections.append({
-                        'bbox': (x, y, x + cw, y + ch),
-                        'confidence': 0.70,
-                        'class_id': 2,
-                        'class_name': 'edge_plate'
+                        "bbox": (x, y, x + box_width, y + box_height),
+                        "confidence": confidence,
+                        "class_id": 0,
+                        "class_name": class_name,
                     })
 
         return self._simple_nms(detections)
 
-    def _simple_nms(self, detections: List[dict], iou_threshold: float = 0.3) -> List[dict]:
-        """Simple NMS"""
-        if len(detections) <= 1:
-            return detections
+    def _detect_opencv(self, image: np.ndarray) -> List[dict]:
+        """Detect plate-like rectangular regions using edges and color fallback."""
+        detections = self._detect_by_color(image)
+        height, width = image.shape[:2]
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.bilateralFilter(gray, 11, 17, 17)
+        edges = cv2.Canny(blurred, 30, 200)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        detections = sorted(detections, key=lambda x: x['confidence'], reverse=True)
+        for contour in contours:
+            x, y, box_width, box_height = cv2.boundingRect(contour)
+            if box_height == 0:
+                continue
+
+            aspect_ratio = box_width / box_height
+            area = box_width * box_height
+            if 1.5 <= aspect_ratio <= 6.5 and 500 <= area <= width * height * 0.2:
+                detections.append({
+                    "bbox": (x, y, x + box_width, y + box_height),
+                    "confidence": 0.65,
+                    "class_id": 0,
+                    "class_name": "license_plate",
+                })
+
+        return self._simple_nms(detections)
+
+    def _simple_nms(self, detections: List[dict], iou_threshold: float = 0.3) -> List[dict]:
+        """Apply non-maximum suppression to detection boxes."""
+        if not detections:
+            return []
+
+        boxes = np.array([det["bbox"] for det in detections], dtype=np.float32)
+        scores = np.array([det["confidence"] for det in detections], dtype=np.float32)
+        order = scores.argsort()[::-1]
         keep = []
 
-        for det in detections:
-            is_dup = False
-            x1, y1, x2, y2 = det['bbox']
-            area1 = (x2-x1) * (y2-y1)
+        while order.size > 0:
+            current = order[0]
+            keep.append(current)
 
-            for kept in keep:
-                kx1, ky1, kx2, ky2 = kept['bbox']
-                xi, yi = max(x1, kx1), max(y1, ky1)
-                x2i, y2i = min(x2, kx2), min(y2, ky2)
-
-                if xi < x2i and yi < y2i:
-                    inter = (x2i - xi) * (y2i - yi)
-                    area2 = (kx2-kx1) * (ky2-ky1)
-                    union = area1 + area2 - inter
-                    if inter / union > iou_threshold if union > 0 else False:
-                        is_dup = True
-                        break
-
-            if not is_dup:
-                keep.append(det)
-
-        return keep
-
-    def detect(self, image: np.ndarray) -> List[dict]:
-        """
-        Phát hiện biển số trong ảnh
-        """
-        original_h, original_w = image.shape[:2]
-        processed_img = self._preprocess_image(image.copy())
-
-        detections = []
-
-        # Thử model chuyên dụng trước
-        self._load_model()
-
-        if self.model is not None:
-            try:
-                results = self.model(
-                    processed_img, verbose=False, conf=self.conf_threshold,
-                    iou=0.45, max_det=5, half=False
-                )
-                for result in results:
-                    boxes = result.boxes
-                    if boxes is not None:
-                        for box in boxes:
-                            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                            conf = float(box.conf[0])
-                            cls_id = int(box.cls[0])
-                            detections.append({
-                                'bbox': (int(x1), int(y1), int(x2), int(y2)),
-                                'confidence': conf,
-                                'class_id': cls_id,
-                                'class_name': 'license_plate'
-                            })
-            except Exception as e:
-                logger.warning(f"Model detection failed: {e}")
-
-        # Fallback: OpenCV color detection
-        if len(detections) == 0:
-            detections = self._detect_by_color(processed_img)
-
-        # Scale bbox về kích thước gốc
-        if original_h != processed_img.shape[0] or original_w != processed_img.shape[1]:
-            scale_x = original_w / processed_img.shape[1]
-            scale_y = original_h / processed_img.shape[0]
-            scaled = []
-            for det in detections:
-                x1, y1, x2, y2 = det['bbox']
-                scaled.append({
-                    'bbox': (int(x1*scale_x), int(y1*scale_y), int(x2*scale_x), int(y2*scale_y)),
-                    'confidence': det['confidence'],
-                    'class_id': det['class_id'],
-                    'class_name': det['class_name']
-                })
-            return scaled
-
-        return detections
-
-    @staticmethod
-    def draw_detections(image: np.ndarray, detections: List[dict],
-                       plate_texts: List[str] = None) -> np.ndarray:
-        """Vẽ các detection lên ảnh"""
-        result = image.copy()
-
-        for i, det in enumerate(detections):
-            x1, y1, x2, y2 = det['bbox']
-            color = (0, 255, 0)  # Xanh lá
-
-            cv2.rectangle(result, (x1, y1), (x2, y2), color, 2)
-
-            label = det.get('class_name', 'plate')
-            if plate_texts and i < len(plate_texts) and plate_texts[i]:
-                label = plate_texts[i]
-
-            (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-            cv2.rectangle(result, (x1, y1 - lh - 10), (x1 + lw, y1), color, -1)
-            cv2.putText(result, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-
-        return result
-
-
-# Singleton
-_detector_instance = None
-
-
-def get_detector(model_path: Optional[str] = None, conf_threshold: float = 0.5) -> PlateDetector:
-    global _detector_instance
-    if _detector_instance is None:
-        _detector_instance = PlateDetector(model_path, conf_threshold)
-    return _detector_instance
-
-    def detect_plate_regions(self, image: np.ndarray) -> List[np.ndarray]:
-        """
-        Phát hiện và trả về các vùng ảnh chứa biển số
-
-        Args:
-            image: Ảnh đầu vào
-
-        Returns:
-            List of cropped plate images
-        """
-        detections = self.detect(image)
-        plates = []
-
-        for det in detections:
-            x1, y1, x2, y2 = det['bbox']
-            plate = image[y1:y2, x1:x2]
-            plates.append(plate)
-
-        return plates
-
-    def _detect_opencv(self, image: np.ndarray) -> List[dict]:
-        """
-        Fallback detection sử dụng OpenCV.
-        Áp dụng các kỹ thuật xử lý ảnh để tìm vùng giống biển số.
-        """
-        detections = []
-
-        # Chuyển sang grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        # Apply bilateral filter để giảm noise
-        blurred = cv2.bilateralFilter(gray, 11, 17, 17)
-
-        # Edge detection
-        edged = cv2.Canny(blurred, 30, 200)
-
-        # Find contours
-        contours, _ = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-        # Sort by area và lấy top contours
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-
-        plate_contour = None
-        for contour in contours:
-            peri = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.018 * peri, True)
-
-            # Tìm contour có 4 đỉnh (hình chữ nhật)
-            if len(approx) == 4:
-                plate_contour = approx
+            if order.size == 1:
                 break
 
-        if plate_contour is not None:
-            x, y, w, h = cv2.boundingRect(plate_contour)
+            x1 = np.maximum(boxes[current, 0], boxes[order[1:], 0])
+            y1 = np.maximum(boxes[current, 1], boxes[order[1:], 1])
+            x2 = np.minimum(boxes[current, 2], boxes[order[1:], 2])
+            y2 = np.minimum(boxes[current, 3], boxes[order[1:], 3])
 
-            # Kiểm tra tỷ lệ (biển số thường có tỷ lệ width/height = 2-6)
-            aspect_ratio = w / h if h > 0 else 0
-            if 1.5 < aspect_ratio < 6:
-                detections.append({
-                    'bbox': (x, y, x + w, y + h),
-                    'confidence': 0.7,
-                    'class_id': 0,
-                    'class_name': 'license_plate'
-                })
+            inter_width = np.maximum(0, x2 - x1)
+            inter_height = np.maximum(0, y2 - y1)
+            intersection = inter_width * inter_height
 
-        return detections
+            current_area = (boxes[current, 2] - boxes[current, 0]) * (boxes[current, 3] - boxes[current, 1])
+            other_areas = (boxes[order[1:], 2] - boxes[order[1:], 0]) * (boxes[order[1:], 3] - boxes[order[1:], 1])
+            union = current_area + other_areas - intersection
+            iou = np.divide(intersection, union, out=np.zeros_like(intersection), where=union > 0)
+
+            order = order[1:][iou < iou_threshold]
+
+        return [detections[index] for index in keep]
+
+    def detect(self, image: np.ndarray) -> List[dict]:
+        """Detect license plates and return bbox/confidence dictionaries."""
+        self._load_model()
+        original_height, original_width = image.shape[:2]
+        processed = self._preprocess_image(image)
+        proc_height, proc_width = processed.shape[:2]
+
+        if self.model is None:
+            detections = self._detect_opencv(processed)
+        else:
+            detections = []
+            try:
+                yolo_results = self.model(processed, conf=self.conf_threshold, verbose=False)
+                for result in yolo_results:
+                    if result.boxes is None:
+                        continue
+                    for box in result.boxes:
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+                        confidence = float(box.conf[0].cpu().numpy())
+                        class_id = int(box.cls[0].cpu().numpy()) if box.cls is not None else 0
+                        class_name = self.model.names.get(class_id, "license_plate") if hasattr(self.model, "names") else "license_plate"
+                        detections.append({
+                            "bbox": (int(x1), int(y1), int(x2), int(y2)),
+                            "confidence": confidence,
+                            "class_id": class_id,
+                            "class_name": class_name,
+                        })
+            except Exception as exc:
+                logger.warning("YOLO detection failed; using OpenCV fallback: %s", exc)
+                detections = self._detect_opencv(processed)
+
+        if processed.shape[:2] != image.shape[:2]:
+            scale_x = original_width / proc_width
+            scale_y = original_height / proc_height
+            for det in detections:
+                x1, y1, x2, y2 = det["bbox"]
+                det["bbox"] = (
+                    int(x1 * scale_x),
+                    int(y1 * scale_y),
+                    int(x2 * scale_x),
+                    int(y2 * scale_y),
+                )
+
+        return self._simple_nms(detections)
+
+    def detect_plate_regions(self, image: np.ndarray) -> List[np.ndarray]:
+        """Return cropped plate regions from an image."""
+        crops = []
+        for detection in self.detect(image):
+            x1, y1, x2, y2 = detection["bbox"]
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(image.shape[1], x2)
+            y2 = min(image.shape[0], y2)
+            if x2 > x1 and y2 > y1:
+                crops.append(image[y1:y2, x1:x2])
+        return crops
 
     @staticmethod
-    def draw_detections(image: np.ndarray, detections: List[dict],
-                       plate_texts: List[str] = None) -> np.ndarray:
-        """
-        Vẽ các detection lên ảnh
-
-        Args:
-            image: Ảnh gốc
-            detections: Kết quả từ detect()
-            plate_texts: Danh sách text biển số tương ứng
-
-        Returns:
-            Ảnh có vẽ các bounding boxes
-        """
+    def draw_detections(image: np.ndarray, detections: List[dict], plate_texts: Optional[List[str]] = None) -> np.ndarray:
+        """Draw detection boxes and optional recognized plate text."""
         result = image.copy()
 
-        for i, det in enumerate(detections):
-            x1, y1, x2, y2 = det['bbox']
-            conf = det['confidence']
-
-            # Màu xanh lá
+        for index, detection in enumerate(detections):
+            x1, y1, x2, y2 = detection["bbox"]
+            confidence = detection.get("confidence", 0.0)
             color = (0, 255, 0)
 
-            # Vẽ bounding box
             cv2.rectangle(result, (x1, y1), (x2, y2), color, 2)
+            label = f"{detection.get('class_name', 'plate')}: {confidence:.2f}"
+            if plate_texts and index < len(plate_texts) and plate_texts[index]:
+                label = f"{plate_texts[index]} ({confidence:.2f})"
 
-            # Vẽ text
-            label = f"{det.get('class_name', 'plate')}: {conf:.2f}"
-            if plate_texts and i < len(plate_texts):
-                label = f"{plate_texts[i]} ({conf:.2f})"
-
-            # Background cho text
-            (label_w, label_h), _ = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
-            )
-            cv2.rectangle(result, (x1, y1 - label_h - 10),
-                         (x1 + label_w, y1), color, -1)
-            cv2.putText(result, label, (x1, y1 - 5),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            (label_width, label_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            text_y = max(y1, label_height + 10)
+            cv2.rectangle(result, (x1, text_y - label_height - 10), (x1 + label_width + 6, text_y), color, -1)
+            cv2.putText(result, label, (x1 + 3, text_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
         return result
 
 
-# Singleton instance
 _detector_instance = None
 
 
 def get_detector(model_path: Optional[str] = None, conf_threshold: float = 0.5) -> PlateDetector:
-    """Get singleton detector instance"""
+    """Return a singleton detector instance."""
     global _detector_instance
     if _detector_instance is None:
-        _detector_instance = PlateDetector(model_path, conf_threshold)
+        _detector_instance = PlateDetector(model_path=model_path, conf_threshold=conf_threshold)
     return _detector_instance

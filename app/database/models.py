@@ -3,6 +3,7 @@ Database models cho lưu trữ kết quả nhận diện
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -64,7 +65,6 @@ def init_db(db_path: str = None):
     # Create data directory if not exists
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-    from sqlalchemy import create_engine
     engine = create_engine(f'sqlite:///{db_path}')
 
     Base.metadata.create_all(engine)

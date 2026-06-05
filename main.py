@@ -5,6 +5,7 @@ Intelligent Traffic System (ITS)
 
 import os
 import sys
+import io
 import argparse
 import logging
 from contextlib import asynccontextmanager
@@ -22,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Fix for UnicodeEncodeError on Windows console
+if sys.stdout.encoding != 'UTF-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='UTF-8')
+if sys.stderr.encoding != 'UTF-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='UTF-8')
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -159,14 +166,7 @@ class LicensePlateRecognitionPipeline:
             plate_img = PlateUtils.crop_plate(image, bbox)
 
             # OCR
-            plate_text = self.ocr.get_text(plate_img)
-            ocr_results = self.ocr.recognize(plate_img)
-
-            # Calculate confidence
-            conf = det['confidence']
-            if ocr_results:
-                avg_ocr_conf = sum(r['confidence'] for r in ocr_results) / len(ocr_results)
-                conf = (conf + avg_ocr_conf) / 2
+            plate_text, conf, ocr_results = self.ocr.get_text_with_confidence(plate_img)
 
             # Get vehicle type
             vehicle_type = PlateUtils.get_plate_type(plate_text)

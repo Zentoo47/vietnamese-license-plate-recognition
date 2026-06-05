@@ -24,15 +24,17 @@ class PlateUtils:
     @staticmethod
     def crop_plate(img: np.ndarray, bbox: Tuple[int, int, int, int]) -> np.ndarray:
         """Cắt vùng biển số từ ảnh gốc"""
-        x1, y1, x2, y2 = bbox
-        # Thêm padding
-        pad = 5
+        x1, y1, x2, y2 = map(int, bbox)
         h, w = img.shape[:2]
+        box_w = max(1, x2 - x1)
+        box_h = max(1, y2 - y1)
+        pad_x = max(6, int(box_w * 0.08))
+        pad_y = max(6, int(box_h * 0.18))
 
-        x1 = max(0, x1 - pad)
-        y1 = max(0, y1 - pad)
-        x2 = min(w, x2 + pad)
-        y2 = min(h, y2 + pad)
+        x1 = max(0, x1 - pad_x)
+        y1 = max(0, y1 - pad_y)
+        x2 = min(w, x2 + pad_x)
+        y2 = min(h, y2 + pad_y)
 
         return img[y1:y2, x1:x2]
 
