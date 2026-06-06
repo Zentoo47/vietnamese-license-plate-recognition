@@ -1,7 +1,7 @@
-path: /content/vietnamese-license-plate-recognition/src/dataset
+path: D:\ITS_License_Plate_Detection\src\dataset
 
-train: images/train
-val: images/val
+train: images/train/images
+val: images/val/images
 
 nc: 1
 names:
