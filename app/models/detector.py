@@ -122,7 +122,10 @@ class PlateDetector:
 
                 aspect_ratio = box_width / box_height
                 area = box_width * box_height
-                if 1.4 <= aspect_ratio <= 6.5 and 400 <= area <= max_area:
+                # Strict constraints for Vietnamese License Plates:
+                # 1. Aspect ratio should be strictly between 2.0 and 5.5 for cars, or 1.2 to 1.6 for bikes
+                # 2. Area should be big enough but not too massive
+                if ((1.2 <= aspect_ratio <= 1.6) or (2.2 <= aspect_ratio <= 5.5)) and (1500 <= area <= max_area * 0.5):
                     detections.append({
                         "bbox": (x, y, x + box_width, y + box_height),
                         "confidence": confidence,

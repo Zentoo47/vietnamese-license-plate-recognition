@@ -1,198 +1,88 @@
-// License Plate Detection App - JavaScript Client
+// License Plate Detection App — JavaScript Client
 
-const API_BASE = '/api';
-
-// File upload handling
 document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
+    // ---- Image dropzone ----
+    const fileInput = document.getElementById('file-input');
+    const dropzone = document.getElementById('dropzone');
+
+    if (dropzone && fileInput) {
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                if (files[0].type.startsWith('image/')) {
+                    handleFile(files[0]);
+                } else {
+                    showError('Vui lòng chọn file ảnh cho tab này!');
+                }
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+    }
+
+    // ---- Video dropzone ----
+    const videoFileInput = document.getElementById('video-file-input');
+    const videoDropzone = document.getElementById('video-dropzone');
+
+    if (videoDropzone && videoFileInput) {
+        videoDropzone.addEventListener('click', (event) => {
+            if (event.target.tagName !== 'BUTTON') {
+                videoFileInput.click();
+            }
+        });
+
+        videoDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            videoDropzone.classList.add('dragover');
+        });
+
+        videoDropzone.addEventListener('dragleave', () => {
+            videoDropzone.classList.remove('dragover');
+        });
+
+        videoDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            videoDropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                if (files[0].type.startsWith('video/') || files[0].type === 'application/octet-stream') {
+                    handleVideoFile(files[0]);
+                } else {
+                    showVideoError('Vui lòng chọn file video cho tab này!');
+                }
+            }
+        });
+
+        videoFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleVideoFile(e.target.files[0]);
+            }
+        });
+    }
 });
 
-function initializeApp() {
-    const dropzone = document.getElementById('dropzone');
-    const fileInput = document.getElementById('file-input');
-    initializeVideoUpload();
+// ============================================================
+// Image Upload
+// ============================================================
 
-    if (!dropzone || !fileInput) return;
-
-    // Click to upload
-    dropzone.addEventListener('click', () => fileInput.click());
-
-    // Drag and drop
-    dropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropzone.classList.add('dragover');
-    });
-
-    dropzone.addEventListener('dragleave', () => {
-        dropzone.classList.remove('dragover');
-    });
-
-    dropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropzone.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            uploadImage(files[0]);
-        }
-    });
-
-    // File input change
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            uploadImage(e.target.files[0]);
-        }
-    });
-}
-
-function initializeVideoUpload() {
-    const videoDropzone = document.getElementById('video-dropzone');
-    const videoFileInput = document.getElementById('video-file-input');
-
-    if (!videoDropzone || !videoFileInput) return;
-
-    videoDropzone.addEventListener('click', (event) => {
-        if (event.target.tagName !== 'BUTTON') {
-            videoFileInput.click();
-        }
-    });
-
-    videoDropzone.addEventListener('dragover', (event) => {
-        event.preventDefault();
-        videoDropzone.classList.add('dragover');
-    });
-
-    videoDropzone.addEventListener('dragleave', () => {
-        videoDropzone.classList.remove('dragover');
-    });
-
-    videoDropzone.addEventListener('drop', (event) => {
-        event.preventDefault();
-        videoDropzone.classList.remove('dragover');
-        if (event.dataTransfer.files.length > 0) {
-            uploadVideo(event.dataTransfer.files[0]);
-        }
-    });
-
-    videoFileInput.addEventListener('change', (event) => {
-        if (event.target.files.length > 0) {
-            uploadVideo(event.target.files[0]);
-        }
-    });
-}
-
-async function uploadVideo(file) {
-    if (!file.type.startsWith('video/') && !/\.(mp4|mov|avi|mkv|webm)$/i.test(file.name)) {
-        showVideoError('Vui lòng chọn file video hợp lệ!');
-        return;
-    }
-
-    if (file.size > 500 * 1024 * 1024) {
-        showVideoError('File quá lớn! Vui lòng chọn video nhỏ hơn 500MB.');
-        return;
-    }
-
-    showVideoLoading(true);
-    hideVideoError();
-
-    try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch(`${API_BASE}/detect-video`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-            displayVideoResults(data);
-        } else {
-            showVideoError(data.detail || 'Có lỗi xảy ra khi xử lý video!');
-        }
-    } catch (error) {
-        showVideoError('Lỗi kết nối: ' + error.message);
-    } finally {
-        showVideoLoading(false);
-    }
-}
-
-function displayVideoResults(data) {
-    const resultsSection = document.getElementById('video-results');
-    const uploadArea = document.getElementById('video-upload-area');
-    const player = document.getElementById('result-video-player');
-    const totalPlates = document.getElementById('video-total-plates');
-    const processTime = document.getElementById('video-process-time');
-    const plateList = document.getElementById('unique-plate-list');
-
-    if (resultsSection) resultsSection.style.display = 'block';
-    if (uploadArea) uploadArea.style.display = 'none';
-    if (player && data.video_result) {
-        player.src = data.video_result + `?t=${Date.now()}`;
-        player.load();
-    }
-    if (totalPlates) totalPlates.textContent = data.total_plates || 0;
-    if (processTime) processTime.textContent = (data.total_time || 0).toFixed(2) + 's';
-
-    if (plateList) {
-        const results = data.results || [];
-        if (results.length === 0) {
-            plateList.innerHTML = '<div class="text-gray-500 col-span-full">Không tìm thấy biển số rõ ràng trong video.</div>';
-        } else {
-            plateList.innerHTML = results.map(item => `
-                <div class="result-card p-3">
-                    <div class="font-bold text-lg">${escapeHtml(item.plate_text)}</div>
-                    <div class="text-sm text-gray-500">${((item.confidence || 0) * 100).toFixed(1)}%</div>
-                    <div class="text-xs text-gray-400">Frame ${item.frame}</div>
-                </div>
-            `).join('');
-        }
-    }
-}
-
-function resetVideoForm() {
-    const resultsSection = document.getElementById('video-results');
-    const uploadArea = document.getElementById('video-upload-area');
-    const input = document.getElementById('video-file-input');
-    const player = document.getElementById('result-video-player');
-
-    if (resultsSection) resultsSection.style.display = 'none';
-    if (uploadArea) uploadArea.style.display = 'block';
-    if (input) input.value = '';
-    if (player) player.removeAttribute('src');
-    hideVideoError();
-}
-
-function showVideoLoading(show) {
-    const loading = document.getElementById('video-loading');
-    const uploadArea = document.getElementById('video-upload-area');
-    if (loading) loading.classList.toggle('active', show);
-    if (uploadArea && show) uploadArea.style.display = 'none';
-}
-
-function showVideoError(message) {
-    const errorMessage = document.getElementById('video-error-message');
-    const errorText = document.getElementById('video-error-text');
-    if (errorMessage) errorMessage.style.display = 'block';
-    if (errorText) errorText.textContent = message;
-}
-
-function hideVideoError() {
-    const errorMessage = document.getElementById('video-error-message');
-    if (errorMessage) errorMessage.style.display = 'none';
-}
-
-function escapeHtml(value) {
-    return String(value).replace(/[&<>'"]/g, (char) => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        "'": '&#39;',
-        '"': '&quot;'
-    }[char]));
-}
-
-async function uploadImage(file) {
-    // Validate
+async function handleFile(file) {
     if (!file.type.startsWith('image/')) {
         showError('Vui lòng chọn file ảnh!');
         return;
@@ -203,15 +93,16 @@ async function uploadImage(file) {
         return;
     }
 
-    // Show loading
-    showLoading(true);
-    hideError();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    document.getElementById('upload-area').style.display = 'none';
+    document.getElementById('loading').classList.add('active');
+    document.getElementById('error-message').style.display = 'none';
+    document.getElementById('results').style.display = 'none';
 
     try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch(`${API_BASE}/detect`, {
+        const response = await fetch('/api/detect', {
             method: 'POST',
             body: formData
         });
@@ -226,7 +117,7 @@ async function uploadImage(file) {
     } catch (error) {
         showError('Lỗi kết nối: ' + error.message);
     } finally {
-        showLoading(false);
+        document.getElementById('loading').classList.remove('active');
     }
 }
 
@@ -236,158 +127,220 @@ function displayResults(data) {
     if (data.results && data.results.length > 0) {
         const result = data.results[0];
 
-        // Update plate text
-        const plateText = document.getElementById('plate-text');
-        if (plateText) plateText.textContent = result.plate_text;
+        document.getElementById('plate-text').textContent = result.plate_text;
+        document.getElementById('vehicle-type').textContent = result.vehicle_type;
+        document.getElementById('accuracy').textContent = (result.confidence * 100).toFixed(1) + '%';
+        document.getElementById('confidence-bar').style.width = (result.confidence * 100) + '%';
+        document.getElementById('process-time').textContent = (data.total_time * 1000).toFixed(0) + 'ms';
+        document.getElementById('total-plates').textContent = data.total_plates;
 
-        // Update vehicle type
-        const vehicleType = document.getElementById('vehicle-type');
-        if (vehicleType) vehicleType.textContent = result.vehicle_type;
-
-        // Update accuracy
-        const accuracy = document.getElementById('accuracy');
-        if (accuracy) accuracy.textContent = (result.confidence * 100).toFixed(1) + '%';
-
-        // Update confidence bar
-        const confidenceBar = document.getElementById('confidence-bar');
-        if (confidenceBar) confidenceBar.style.width = (result.confidence * 100) + '%';
-
-        // Update process time
-        const processTime = document.getElementById('process-time');
-        if (processTime) processTime.textContent = (data.total_time * 1000).toFixed(0) + 'ms';
-
-        // Update total plates
-        const totalPlates = document.getElementById('total-plates');
-        if (totalPlates) totalPlates.textContent = data.total_plates;
-
-        // Update image
         if (data.image_result) {
-            const resultImage = document.getElementById('result-image');
-            const imagePreview = document.getElementById('image-preview');
-            if (resultImage) {
-                resultImage.src = 'data:image/jpeg;base64,' + data.image_result;
-            }
-            if (imagePreview) imagePreview.style.display = 'block';
+            document.getElementById('result-image').src = 'data:image/jpeg;base64,' + data.image_result;
+            document.getElementById('image-preview').style.display = 'block';
+        } else {
+            document.getElementById('image-preview').style.display = 'none';
         }
     } else {
-        const plateText = document.getElementById('plate-text');
-        if (plateText) plateText.textContent = 'Không tìm thấy biển số';
-    }
-
-    // Hide upload area
-    const uploadArea = document.getElementById('upload-area');
-    if (uploadArea) uploadArea.style.display = 'none';
-}
-
-function resetForm() {
-    document.getElementById('results').style.display = 'none';
-    const uploadArea = document.getElementById('upload-area');
-    if (uploadArea) uploadArea.style.display = 'block';
-
-    const fileInput = document.getElementById('file-input');
-    if (fileInput) fileInput.value = '';
-
-    hideError();
-}
-
-function showLoading(show) {
-    const loading = document.getElementById('loading');
-    const uploadArea = document.getElementById('upload-area');
-
-    if (loading) {
-        loading.classList.toggle('active', show);
-    }
-    if (uploadArea && show) {
-        uploadArea.style.display = 'none';
+        document.getElementById('plate-text').textContent = 'Không tìm thấy biển số';
+        document.getElementById('vehicle-type').textContent = '-';
+        document.getElementById('image-preview').style.display = 'none';
     }
 }
 
 function showError(message) {
-    const errorMessage = document.getElementById('error-message');
-    const errorText = document.getElementById('error-text');
-
-    if (errorMessage) errorMessage.style.display = 'block';
-    if (errorText) errorText.textContent = message;
+    document.getElementById('error-text').textContent = message;
+    document.getElementById('error-message').style.display = 'block';
+    document.getElementById('upload-area').style.display = 'block';
+    document.getElementById('results').style.display = 'none';
 }
 
-function hideError() {
-    const errorMessage = document.getElementById('error-message');
-    if (errorMessage) errorMessage.style.display = 'none';
+function resetForm() {
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('upload-area').style.display = 'block';
+    document.getElementById('file-input').value = '';
+    document.getElementById('error-message').style.display = 'none';
+    document.getElementById('image-preview').style.display = 'none';
 }
 
-// Tab switching
+// ============================================================
+// Video Upload
+// ============================================================
+
+async function handleVideoFile(file) {
+    const allowedExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+    const fileName = (file.name || '').toLowerCase();
+    const hasAllowedExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+
+    if (!file.type.startsWith('video/') && file.type !== 'application/octet-stream' && !hasAllowedExtension) {
+        showVideoError('Vui lòng chọn file video!');
+        return;
+    }
+
+    if (file.size > 500 * 1024 * 1024) {
+        showVideoError('File quá lớn! Vui lòng chọn file nhỏ hơn 500MB.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    document.getElementById('video-upload-area').style.display = 'none';
+    document.getElementById('video-results').style.display = 'none';
+    document.getElementById('video-error-message').style.display = 'none';
+    document.getElementById('video-loading-title').textContent = 'Đang tải video lên...';
+    document.getElementById('video-loading-detail').textContent = 'Vui lòng chờ, video lớn có thể mất vài phút.';
+    document.getElementById('video-loading').classList.add('active');
+
+    try {
+        const response = await fetch('/api/detect-video', {
+            method: 'POST',
+            body: formData
+        });
+
+        document.getElementById('video-loading-title').textContent = 'Đang xử lý nhận diện video...';
+        document.getElementById('video-loading-detail').textContent = 'Hệ thống đang vẽ kết quả lên video.';
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            displayVideoResults(data);
+        } else {
+            showVideoError(data.detail || 'Có lỗi xảy ra khi nhận diện video!');
+        }
+    } catch (error) {
+        showVideoError('Lỗi kết nối: ' + error.message);
+    } finally {
+        document.getElementById('video-loading').classList.remove('active');
+    }
+}
+
+function displayVideoResults(data) {
+    document.getElementById('video-results').style.display = 'block';
+    document.getElementById('video-total-plates').textContent = data.total_plates || 0;
+    document.getElementById('video-process-time').textContent = Number(data.total_time || 0).toFixed(2) + ' s';
+
+    if (data.video_result) {
+        const player = document.getElementById('result-video-player');
+        player.src = data.video_result + '?t=' + Date.now();
+        player.load();
+    }
+
+    const uniquePlateList = document.getElementById('unique-plate-list');
+    uniquePlateList.innerHTML = '';
+
+    if (data.results && data.results.length > 0) {
+        data.results.forEach(result => {
+            const plateItem = document.createElement('div');
+            plateItem.className = 'bg-blue-50 p-3 rounded-lg shadow-sm text-center';
+            plateItem.innerHTML = `
+                <p class="font-bold text-lg text-blue-800">${escapeHtml(result.plate_text)}</p>
+                <p class="text-sm text-gray-600">Độ chính xác: ${(result.confidence * 100).toFixed(1)}%</p>
+                <p class="text-xs text-gray-500">Loại xe: ${escapeHtml(result.vehicle_type)}</p>
+            `;
+            uniquePlateList.appendChild(plateItem);
+        });
+    } else {
+        uniquePlateList.innerHTML = '<p class="col-span-full text-gray-600">Không tìm thấy biển số trong video.</p>';
+    }
+}
+
+function showVideoError(message) {
+    document.getElementById('video-error-text').textContent = message;
+    document.getElementById('video-error-message').style.display = 'block';
+    document.getElementById('video-upload-area').style.display = 'block';
+    document.getElementById('video-results').style.display = 'none';
+}
+
+function resetVideoForm() {
+    document.getElementById('video-results').style.display = 'none';
+    document.getElementById('video-upload-area').style.display = 'block';
+    document.getElementById('video-file-input').value = '';
+    document.getElementById('video-error-message').style.display = 'none';
+    document.getElementById('result-video-player').src = '';
+}
+
+// ============================================================
+// History & Stats
+// ============================================================
+
+async function loadHistory() {
+    try {
+        const response = await fetch('/api/history');
+        const data = await response.json();
+        const tbody = document.getElementById('history-body');
+        tbody.innerHTML = '';
+
+        if (!Array.isArray(data) || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-500 py-8">Chưa có dữ liệu</td></tr>';
+            return;
+        }
+
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${item.id || '-'}</td>
+                <td class="font-semibold">${item.plate_text || '-'}</td>
+                <td>${item.vehicle_type || '-'}</td>
+                <td>${item.confidence ? (item.confidence * 100).toFixed(1) + '%' : '-'}</td>
+                <td>${item.processing_time ? (item.processing_time * 1000).toFixed(0) + 'ms' : '-'}</td>
+                <td>${item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : '-'}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    } catch (error) {
+        document.getElementById('history-body').innerHTML =
+            '<tr><td colspan="6" class="text-center text-red-500 py-8">Không tải được lịch sử</td></tr>';
+    }
+}
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+        document.getElementById('stat-total').textContent = data.total_detections || 0;
+        document.getElementById('stat-avg-conf').textContent = ((data.avg_confidence || 0) * 100).toFixed(1) + '%';
+        document.getElementById('stat-avg-time').textContent = ((data.avg_processing_time || 0) * 1000).toFixed(0) + 'ms';
+    } catch (error) {
+        console.error('Không tải được thống kê:', error);
+    }
+}
+
+// ============================================================
+// Tab Switching
+// ============================================================
+
 function switchTab(tabName) {
-    // Update buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    event.target.closest('.tab-btn').classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.getAttribute('onclick') === `switchTab('${tabName}')`) {
+            btn.classList.add('active');
+        }
+    });
 
-    // Update content
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
     });
     document.getElementById(tabName + '-tab').classList.add('active');
 
-    // Load data if needed
     if (tabName === 'history') {
         loadHistory();
         loadStats();
     }
 }
 
-// Load history
-async function loadHistory() {
-    try {
-        const response = await fetch(`${API_BASE}/history?limit=50`);
-        const data = await response.json();
+// ============================================================
+// Utilities
+// ============================================================
 
-        const tbody = document.getElementById('history-body');
-        if (!tbody) return;
-
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-500 py-8">Chưa có dữ liệu</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = data.map(item => `
-            <tr>
-                <td>${item.id}</td>
-                <td class="font-semibold">${item.plate_text}</td>
-                <td><span class="badge badge-success">${item.vehicle_type || '-'}</span></td>
-                <td>${(item.confidence * 100).toFixed(1)}%</td>
-                <td>${item.processing_time ? (item.processing_time * 1000).toFixed(0) + 'ms' : '-'}</td>
-                <td class="text-gray-500">${new Date(item.created_at).toLocaleString('vi-VN')}</td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error loading history:', error);
-    }
+function escapeHtml(value) {
+    return String(value).replace(/[&<>'"/]/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;',
+        '/': '&#x2F;'
+    }[char]));
 }
-
-// Load stats
-async function loadStats() {
-    try {
-        const response = await fetch(`${API_BASE}/stats`);
-        const data = await response.json();
-
-        const totalEl = document.getElementById('stat-total');
-        const avgConfEl = document.getElementById('stat-avg-conf');
-        const avgTimeEl = document.getElementById('stat-avg-time');
-
-        if (totalEl) totalEl.textContent = data.total_detections || 0;
-        if (avgConfEl) avgConfEl.textContent = ((data.avg_confidence || 0) * 100).toFixed(1) + '%';
-        if (avgTimeEl) avgTimeEl.textContent = ((data.avg_processing_time || 0) * 1000).toFixed(0) + 'ms';
-    } catch (error) {
-        console.error('Error loading stats:', error);
-    }
-}
-
-// Export functions for global access
-window.uploadImage = uploadImage;
-window.resetForm = resetForm;
-window.switchTab = switchTab;
-window.loadHistory = loadHistory;
-window.loadStats = loadStats;
-window.uploadVideo = uploadVideo;
-window.resetVideoForm = resetVideoForm;

@@ -28,8 +28,9 @@ class PlateUtils:
         h, w = img.shape[:2]
         box_w = max(1, x2 - x1)
         box_h = max(1, y2 - y1)
-        pad_x = max(6, int(box_w * 0.08))
-        pad_y = max(6, int(box_h * 0.18))
+        # T?ng padding ?? tr?nh c?t m?t k? t? ? m?p
+        pad_x = max(10, int(box_w * 0.15))
+        pad_y = max(10, int(box_h * 0.25))
 
         x1 = max(0, x1 - pad_x)
         y1 = max(0, y1 - pad_y)

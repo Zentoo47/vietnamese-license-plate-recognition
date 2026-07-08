@@ -11,6 +11,7 @@ from datetime import datetime
 # Cấu hình
 PROJECT_NAME = "vietnamese_license_plate"
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# FIX: dùng dataset_yolo — có đủ ảnh và label YOLO đúng format (2036 train, 146 val)
 DATASET_DIR = os.path.join(PROJECT_DIR, "dataset")
 MODEL_DIR = os.path.join(PROJECT_DIR, "trained_models")
 
@@ -191,9 +192,9 @@ def train_model(model_name: str = "yolov8n", epochs: int = 100, batch_size: int 
         patience=50,
         save=True,
         save_period=10,
-        cache=True,
+        cache=False,   # Tắt cache RAM để tránh PermissionError (ThreadPool/Named Pipe)
         device=device,
-        workers=8,
+        workers=0,     # Tắt multiprocessing workers để tránh sandbox restrictions
         verbose=True
     )
 
@@ -216,12 +217,22 @@ def validate_model(model_path: str):
     print(f"Validating model: {model_path}")
     model = YOLO(model_path)
 
-    # Validate
-    results = model.val(data=os.path.join(DATASET_DIR, "data.yaml"))
+    # Validate — lưu output vào trong project để tránh PermissionError sandbox
+    yaml_path = os.path.join(DATASET_DIR, "data.yaml")
+    results = model.val(
+        data=yaml_path,
+        project=MODEL_DIR,
+        name="val_results",
+        exist_ok=True,
+        workers=0,       # tránh multiprocessing Named Pipe bị chặn
+        verbose=True
+    )
 
     print(f"\nValidation Results:")
-    print(f"  mAP50: {results.box.map50:.4f}")
+    print(f"  mAP50:    {results.box.map50:.4f}")
     print(f"  mAP50-95: {results.box.map:.4f}")
+    print(f"  Precision:{results.box.mp:.4f}")
+    print(f"  Recall:   {results.box.mr:.4f}")
 
     return results
 

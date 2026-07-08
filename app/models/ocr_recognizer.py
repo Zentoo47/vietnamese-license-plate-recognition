@@ -48,7 +48,7 @@ class OCRRecognizer:
             self._reader_loaded = False
 
     def _preprocess_plate(self, plate_img: np.ndarray) -> np.ndarray:
-        """Tiền xử lý ảnh biển số để cải thiện OCR"""
+        """Ti?? n x??? l?? ???nh bi???n s??? ????? c???i thi???n OCR: Upscale v?? th??m Padding"""
         if len(plate_img.shape) == 3:
             gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
         else:
@@ -58,16 +58,27 @@ class OCRRecognizer:
         if h == 0 or w == 0:
             return gray
 
-        target_height = 120
-        if h < target_height:
-            scale = target_height / h
-            gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        # 1. Upscale ảnh mạnh mẽ (Tối thiểu 150px chiều cao)
+        target_height = 150
+        scale = target_height / h if h < target_height else 2.0
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        
+        # 2. Khử nhiễu nhưng giữ lại cạnh (Bilateral Filter)
+        gray = cv2.bilateralFilter(gray, 9, 75, 75)
+        
+        # 3. Làm nét ảnh (Sharpening)
+        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        gray = cv2.filter2D(gray, -1, kernel)
 
+        # 4. Thêm Padding (EasyOCR hoạt động tốt hơn khi text không sát lề)
+        padding = 20
+        gray = cv2.copyMakeBorder(gray, padding, padding, padding, padding, cv2.BORDER_CONSTANT, value=255)
+
+        # 5. Tăng cường tương phản (CLAHE)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
-        denoised = cv2.fastNlMeansDenoising(enhanced, None, h=10, templateWindowSize=7, searchWindowSize=21)
-
-        return denoised
+        
+        return enhanced
 
     def _preprocess_variants(self, plate_img: np.ndarray) -> List[np.ndarray]:
         """Tạo nhiều biến thể ảnh để OCR ổn định hơn với ảnh mờ/tối/chói."""
@@ -223,56 +234,40 @@ class OCRRecognizer:
         return score
 
     def _format_vietnamese_plate(self, text: str) -> str:
-        """Format text thành biển số VN chuẩn"""
         if not text:
             return ""
 
-        # Clean text. Do not blindly convert letters such as B/S/Z to digits,
-        # because Vietnamese plates contain real letters in the series section.
         raw = re.sub(r'[^A-Z0-9]', '', text.upper())
         if not raw:
             return ""
 
-        digit_map = str.maketrans({'O': '0', 'Q': '0', 'D': '0', 'I': '1', 'L': '1', 'T': '7'})
-        letter_map = str.maketrans({'0': 'O', '1': 'I', '5': 'S', '8': 'B', '2': 'Z', '4': 'A'})
+        # Sua cac loi nham lan ky tu pho bien cua EasyOCR
+        raw = raw.replace('O', '0').replace('I', '1').replace('Q', '0').replace('D', '0')
 
-        def normalize_digit(value: str) -> str:
-            return value.translate(digit_map) if value.isalpha() else value
+        # Bien o to 5 so: 30A-123.45
+        m1 = re.match(r'^([0-9]{2})([A-Z]{1,2})([0-9]{3})([0-9]{2})$', raw)
+        if m1:
+            return f"{m1.group(1)}{m1.group(2)}-{m1.group(3)}.{m1.group(4)}"
 
-        def normalize_letter(value: str) -> str:
-            return value.translate(letter_map) if value.isdigit() else value
+        # Bien xe may 5 so: 59L1-12345
+        m2 = re.match(r'^([0-9]{2})([0-9A-Z]{2})([0-9]{5})$', raw)
+        if m2:
+            series = m2.group(2)
+            if len(series) > 0 and series[0].isdigit():
+                mapping = {'1':'L', '0':'D', '2':'Z', '5':'S', '8':'B'}
+                series = mapping.get(series[0], 'L') + series[1:]
+            return f"{m2.group(1)}-{series} {m2.group(3)[:3]}.{m2.group(3)[3:]}"
 
-        chars = list(raw)
-        # First two characters are province digits.
-        for i in range(min(2, len(chars))):
-            chars[i] = normalize_digit(chars[i])
+        # Bien xe may 4 so: 54L1-9999
+        m3 = re.match(r'^([0-9]{2})([0-9A-Z]{2})([0-9]{4})$', raw)
+        if m3:
+            series = m3.group(2)
+            if len(series) > 0 and series[0].isdigit():
+                mapping = {'1':'L', '0':'D', '2':'Z', '5':'S', '8':'B'}
+                series = mapping.get(series[0], 'L') + series[1:]
+            return f"{m3.group(1)}-{series} {m3.group(3)}"
 
-        # Series characters directly after province are letters, optionally followed by one digit.
-        if len(chars) >= 3:
-            chars[2] = normalize_letter(chars[2])
-        if len(chars) >= 4 and chars[3].isalpha():
-            chars[3] = normalize_letter(chars[3])
-
-        # Remaining characters are serial digits.
-        start_digits = 4 if len(chars) >= 4 and chars[3].isalpha() else 3
-        for i in range(start_digits, len(chars)):
-            chars[i] = normalize_digit(chars[i])
-
-        text = ''.join(chars)
-
-        # Vietnamese plate patterns
-        patterns = [
-            (r'^(\d{2})([A-Z])(\d{4,5})$', r'\1\2-\3'),  # 30A-12345
-            (r'^(\d{2})([A-Z]{1,2})(\d{3})(\d{2})$', r'\1\2-\3.\4'),  # 30A1-123.45
-            (r'^(\d{2})([A-Z])(\d{3})(\d{1,2})$', r'\1\2-\3\4'),  # 30A-1234
-        ]
-
-        for pattern, replacement in patterns:
-            match = re.match(pattern, text)
-            if match:
-                return re.sub(pattern, replacement, text)
-
-        return text
+        return raw
 
     def _fallback_ocr(self, plate_img: np.ndarray) -> List[dict]:
         """Fallback OCR với pytesseract"""

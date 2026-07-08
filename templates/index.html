@@ -4,305 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hệ Thống Nhận Diện Biển Số Xe</title>
+    <meta name="description" content="Ứng dụng nhận diện biển số xe tự động sử dụng Deep Learning và OCR - ITS License Plate Recognition">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #3B82F6;
-            --primary-dark: #2563EB;
-            --success: #10B981;
-            --warning: #F59E0B;
-            --danger: #EF4444;
-            --dark: #1F2937;
-            --light: #F3F4F6;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .header {
-            background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1rem;
-        }
-
-        .upload-zone {
-            border: 3px dashed #CBD5E1;
-            border-radius: 12px;
-            padding: 60px 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: var(--light);
-        }
-
-        .upload-zone:hover {
-            border-color: var(--primary);
-            background: white;
-            transform: scale(1.01);
-        }
-
-        .upload-zone.dragover {
-            border-color: var(--success);
-            background: rgba(16, 185, 129, 0.1);
-        }
-
-        .upload-zone i {
-            font-size: 4rem;
-            color: var(--primary);
-            margin-bottom: 16px;
-        }
-
-        .btn {
-            padding: 12px 32px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: none;
-            font-size: 1rem;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .results-section {
-            margin-top: 30px;
-        }
-
-        .result-card {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-            border-left: 4px solid var(--success);
-        }
-
-        .plate-text {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--dark);
-            letter-spacing: 2px;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 0.875rem;
-            font-weight: 600;
-        }
-
-        .badge-success {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success);
-        }
-
-        .badge-warning {
-            background: rgba(245, 158, 11, 0.1);
-            color: var(--warning);
-        }
-
-        .confidence-bar {
-            height: 8px;
-            background: #E5E7EB;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 12px;
-        }
-
-        .confidence-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--success) 0%, var(--primary) 100%);
-            border-radius: 4px;
-            transition: width 0.5s ease;
-        }
-
-        .image-preview {
-            margin-top: 20px;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-        }
-
-        .image-preview img {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
-
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 40px;
-        }
-
-        .loading.active {
-            display: block;
-        }
-
-        .spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid #E5E7EB;
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-top: 24px;
-        }
-
-        .stat-item {
-            background: var(--light);
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--primary);
-        }
-
-        .stat-label {
-            color: #6B7280;
-            font-size: 0.875rem;
-            margin-top: 4px;
-        }
-
-        .history-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        .history-table th,
-        .history-table td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #E5E7EB;
-        }
-
-        .history-table th {
-            background: var(--light);
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        .history-table tr:hover {
-            background: rgba(59, 130, 246, 0.05);
-        }
-
-        .tab-nav {
-            display: flex;
-            border-bottom: 2px solid #E5E7EB;
-            margin-bottom: 24px;
-        }
-
-        .tab-btn {
-            padding: 12px 24px;
-            border: none;
-            background: transparent;
-            font-weight: 600;
-            color: #6B7280;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            margin-bottom: -2px;
-            transition: all 0.3s ease;
-        }
-
-        .tab-btn:hover {
-            color: var(--primary);
-        }
-
-        .tab-btn.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .footer {
-            text-align: center;
-            padding: 24px;
-            color: white;
-            opacity: 0.8;
-        }
-
-        @media (max-width: 768px) {
-            .header h1 {
-                font-size: 1.5rem;
-            }
-            .plate-text {
-                font-size: 1.75rem;
-            }
-        }
-    </style>
+    <link href="/static/css/style.css" rel="stylesheet">
 </head>
 <body>
     <div class="container py-8">
@@ -325,57 +30,7 @@
                     </button>
                 </div>
 
-
-                <!-- Video Detect Tab -->
-                <div id="video-detect-tab" class="tab-content">
-                    <div id="video-upload-area">
-                        <div class="upload-zone" id="video-dropzone">
-                            <i class="fas fa-file-video"></i>
-                            <h3 class="text-xl font-semibold mb-2">Kéo thả video hoặc nhấn để chọn</h3>
-                            <p class="text-gray-500 mb-4">Hỗ trợ: MP4, MOV, AVI, MKV, WEBM (tối đa 500MB)</p>
-                            <button class="btn btn-primary" type="button" onclick="document.getElementById('video-file-input').click()">
-                                <i class="fas fa-folder-open mr-2"></i> Chọn Video
-                            </button>
-                            <input type="file" id="video-file-input" accept="video/*,.mp4,.mov,.avi,.mkv,.webm" style="display: none;">
-                        </div>
-                    </div>
-
-                    <div class="loading" id="video-loading">
-                        <div class="spinner"></div>
-                        <p class="text-gray-600 font-semibold" id="video-loading-title">Đang tải video lên...</p>
-                        <p class="text-gray-500 text-sm mt-2" id="video-loading-detail">Sau khi tải lên, hệ thống sẽ xử lý và xuất video kết quả.</p>
-                    </div>
-
-                    <div id="video-results" class="results-section" style="display: none;">
-                        <div class="result-card">
-                            <h3 class="text-2xl font-bold mb-4">Kết quả nhận diện Video</h3>
-                            <div class="video-preview mb-4">
-                                <video id="result-video-player" controls class="w-full rounded-lg shadow-md" style="max-height: 500px;"></video>
-                            </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <span class="text-sm text-gray-500">Tổng số lượt phát hiện:</span>
-                                    <div class="font-semibold text-lg" id="video-total-plates">-</div>
-                                </div>
-                                <div>
-                                    <span class="text-sm text-gray-500">Thời gian xử lý:</span>
-                                    <div class="font-semibold text-lg" id="video-process-time">-</div>
-                                </div>
-                            </div>
-                            <h4 class="text-xl font-semibold mb-3">Các biển số độc nhất:</h4>
-                            <div id="unique-plate-list" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
-                            <button class="btn btn-primary mt-6" type="button" onclick="resetVideoForm()">
-                                <i class="fas fa-redo mr-2"></i> Tải Video Khác
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="video-error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mt-4" role="alert" style="display: none;">
-                        <strong class="font-bold">Lỗi!</strong>
-                        <span class="block sm:inline" id="video-error-text"></span>
-                    </div>
-                </div>
-                <!-- Detect Tab -->
+                <!-- ===== Detect Tab ===== -->
                 <div id="detect-tab" class="tab-content active">
                     <div id="upload-area">
                         <div class="upload-zone" id="dropzone">
@@ -428,7 +83,7 @@
                                 </div>
                             </div>
 
-                            <div class="image-preview" id="image-preview">
+                            <div class="image-preview" id="image-preview" style="display: none;">
                                 <img id="result-image" src="" alt="Kết quả nhận diện">
                             </div>
                         </div>
@@ -446,7 +101,57 @@
                     </div>
                 </div>
 
-                <!-- History Tab -->
+                <!-- ===== Video Detect Tab ===== -->
+                <div id="video-detect-tab" class="tab-content">
+                    <div id="video-upload-area">
+                        <div class="upload-zone" id="video-dropzone">
+                            <i class="fas fa-file-video"></i>
+                            <h3 class="text-xl font-semibold mb-2">Kéo thả video hoặc nhấn để chọn</h3>
+                            <p class="text-gray-500 mb-4">Hỗ trợ: MP4, MOV, AVI, MKV, WEBM (tối đa 500MB)</p>
+                            <button class="btn btn-primary" type="button" onclick="document.getElementById('video-file-input').click()">
+                                <i class="fas fa-folder-open mr-2"></i> Chọn Video
+                            </button>
+                            <input type="file" id="video-file-input" accept="video/*,.mp4,.mov,.avi,.mkv,.webm" style="display: none;">
+                        </div>
+                    </div>
+
+                    <div class="loading" id="video-loading">
+                        <div class="spinner"></div>
+                        <p class="text-gray-600 font-semibold" id="video-loading-title">Đang tải video lên...</p>
+                        <p class="text-gray-500 text-sm mt-2" id="video-loading-detail">Sau khi tải lên, hệ thống sẽ xử lý và xuất video kết quả.</p>
+                    </div>
+
+                    <div id="video-results" class="results-section" style="display: none;">
+                        <div class="result-card">
+                            <h3 class="text-2xl font-bold mb-4">Kết quả nhận diện Video</h3>
+                            <div class="video-preview mb-4">
+                                <video id="result-video-player" controls class="w-full rounded-lg shadow-md" style="max-height: 500px;"></video>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <span class="text-sm text-gray-500">Tổng số lượt phát hiện:</span>
+                                    <div class="font-semibold text-lg" id="video-total-plates">-</div>
+                                </div>
+                                <div>
+                                    <span class="text-sm text-gray-500">Thời gian xử lý:</span>
+                                    <div class="font-semibold text-lg" id="video-process-time">-</div>
+                                </div>
+                            </div>
+                            <h4 class="text-xl font-semibold mb-3">Các biển số độc nhất:</h4>
+                            <div id="unique-plate-list" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+                            <button class="btn btn-primary mt-6" type="button" onclick="resetVideoForm()">
+                                <i class="fas fa-redo mr-2"></i> Tải Video Khác
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="video-error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mt-4" role="alert" style="display: none;">
+                        <strong class="font-bold">Lỗi!</strong>
+                        <span class="block sm:inline" id="video-error-text"></span>
+                    </div>
+                </div>
+
+                <!-- ===== History Tab ===== -->
                 <div id="history-tab" class="tab-content">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-lg font-semibold">Lịch Sử Nhận Diện</h3>
@@ -484,9 +189,7 @@
                             </thead>
                             <tbody id="history-body">
                                 <tr>
-                                    <td colspan="6" class="text-center text-gray-500 py-8">
-                                        Chưa có dữ liệu
-                                    </td>
+                                    <td colspan="6" class="text-center text-gray-500 py-8">Chưa có dữ liệu</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -500,318 +203,6 @@
         </div>
     </div>
 
-    <script>
-        // File input and dropzone for images
-        const fileInput = document.getElementById('file-input');
-        const dropzone = document.getElementById('dropzone');
-
-        dropzone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropzone.classList.add('dragover');
-        });
-
-        dropzone.addEventListener('dragleave', () => {
-            dropzone.classList.remove('dragover');
-        });
-
-        dropzone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropzone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                if (files[0].type.startsWith('image/')) {
-                    handleFile(files[0]);
-                } else {
-                    showError('Vui lòng chọn file ảnh cho tab này!');
-                }
-            }
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
-            }
-        });
-
-        // File input and dropzone for videos
-        const videoFileInput = document.getElementById('video-file-input');
-        const videoDropzone = document.getElementById('video-dropzone');
-
-        videoDropzone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            videoDropzone.classList.add('dragover');
-        });
-
-        videoDropzone.addEventListener('dragleave', () => {
-            videoDropzone.classList.remove('dragover');
-        });
-
-        videoDropzone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            videoDropzone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                if (files[0].type.startsWith('video/') || files[0].type === 'application/octet-stream') {
-                    handleVideoFile(files[0]);
-                } else {
-                    showVideoError('Vui lòng chọn file video cho tab này!');
-                }
-            }
-        });
-
-        videoFileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleVideoFile(e.target.files[0]);
-            }
-        });
-
-        // Handle image file upload
-        async function handleFile(file) {
-            if (!file.type.startsWith('image/')) {
-                showError('Vui lòng chọn file ảnh!');
-                return;
-            }
-
-            if (file.size > 10 * 1024 * 1024) {
-                showError('File quá lớn! Vui lòng chọn file nhỏ hơn 10MB.');
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            document.getElementById('upload-area').style.display = 'none';
-            document.getElementById('loading').classList.add('active');
-            document.getElementById('error-message').style.display = 'none';
-            document.getElementById('results').style.display = 'none';
-
-            try {
-                const response = await fetch('/api/detect', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    displayResults(data);
-                } else {
-                    showError(data.detail || 'Có lỗi xảy ra khi nhận diện!');
-                }
-            } catch (error) {
-                showError('Lỗi kết nối: ' + error.message);
-            } finally {
-                document.getElementById('loading').classList.remove('active');
-            }
-        }
-
-        // Handle video file upload
-        async function handleVideoFile(file) {
-            const allowedExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
-            const fileName = (file.name || '').toLowerCase();
-            const hasAllowedExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
-
-            if (!file.type.startsWith('video/') && file.type !== 'application/octet-stream' && !hasAllowedExtension) {
-                showVideoError('Vui lòng chọn file video!');
-                return;
-            }
-
-            if (file.size > 500 * 1024 * 1024) {
-                showVideoError('File quá lớn! Vui lòng chọn file nhỏ hơn 500MB.');
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            document.getElementById('video-upload-area').style.display = 'none';
-            document.getElementById('video-results').style.display = 'none';
-            document.getElementById('video-error-message').style.display = 'none';
-            document.getElementById('video-loading-title').textContent = 'Đang tải video lên...';
-            document.getElementById('video-loading-detail').textContent = 'Vui lòng chờ, video lớn có thể mất vài phút.';
-            document.getElementById('video-loading').classList.add('active');
-
-            try {
-                const response = await fetch('/api/detect-video', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                document.getElementById('video-loading-title').textContent = 'Đang xử lý nhận diện video...';
-                document.getElementById('video-loading-detail').textContent = 'Hệ thống đang vẽ kết quả lên video.';
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    displayVideoResults(data);
-                } else {
-                    showVideoError(data.detail || 'Có lỗi xảy ra khi nhận diện video!');
-                }
-            } catch (error) {
-                showVideoError('Lỗi kết nối: ' + error.message);
-            } finally {
-                document.getElementById('video-loading').classList.remove('active');
-            }
-        }
-
-        // Display image results
-        function displayResults(data) {
-            document.getElementById('results').style.display = 'block';
-
-            if (data.results && data.results.length > 0) {
-                const result = data.results[0];
-
-                document.getElementById('plate-text').textContent = result.plate_text;
-                document.getElementById('vehicle-type').textContent = result.vehicle_type;
-                document.getElementById('accuracy').textContent = (result.confidence * 100).toFixed(1) + '%';
-                document.getElementById('confidence-bar').style.width = (result.confidence * 100) + '%';
-                document.getElementById('process-time').textContent = (data.total_time * 1000).toFixed(0) + 'ms';
-                document.getElementById('total-plates').textContent = data.total_plates;
-
-                if (data.image_result) {
-                    document.getElementById('result-image').src = 'data:image/jpeg;base64,' + data.image_result;
-                    document.getElementById('image-preview').style.display = 'block';
-                } else {
-                    document.getElementById('image-preview').style.display = 'none';
-                }
-            } else {
-                document.getElementById('plate-text').textContent = 'Không tìm thấy biển số';
-                document.getElementById('vehicle-type').textContent = '-';
-                document.getElementById('image-preview').style.display = 'none';
-            }
-        }
-
-        // Display video results
-        function displayVideoResults(data) {
-            document.getElementById('video-results').style.display = 'block';
-            document.getElementById('video-total-plates').textContent = data.total_plates || 0;
-            document.getElementById('video-process-time').textContent = Number(data.total_time || 0).toFixed(2) + ' s';
-
-            if (data.video_result) {
-                const player = document.getElementById('result-video-player');
-                player.src = data.video_result + '?t=' + Date.now();
-                player.load();
-            }
-
-            const uniquePlateList = document.getElementById('unique-plate-list');
-            uniquePlateList.innerHTML = '';
-            if (data.results && data.results.length > 0) {
-                data.results.forEach(result => {
-                    const plateItem = document.createElement('div');
-                    plateItem.className = 'bg-blue-50 p-3 rounded-lg shadow-sm text-center';
-                    plateItem.innerHTML = `
-                        <p class="font-bold text-lg text-blue-800">${result.plate_text}</p>
-                        <p class="text-sm text-gray-600">Độ chính xác: ${(result.confidence * 100).toFixed(1)}%</p>
-                        <p class="text-xs text-gray-500">Loại xe: ${result.vehicle_type}</p>
-                    `;
-                    uniquePlateList.appendChild(plateItem);
-                });
-            } else {
-                uniquePlateList.innerHTML = '<p class="col-span-full text-gray-600">Không tìm thấy biển số trong video.</p>';
-            }
-        }
-
-        // Show error message for images
-        function showError(message) {
-            document.getElementById('error-text').textContent = message;
-            document.getElementById('error-message').style.display = 'block';
-            document.getElementById('upload-area').style.display = 'block';
-            document.getElementById('results').style.display = 'none';
-        }
-
-        // Show error message for videos
-        function showVideoError(message) {
-            document.getElementById('video-error-text').textContent = message;
-            document.getElementById('video-error-message').style.display = 'block';
-            document.getElementById('video-upload-area').style.display = 'block';
-            document.getElementById('video-results').style.display = 'none';
-        }
-
-        // Reset image form
-        function resetForm() {
-            document.getElementById('results').style.display = 'none';
-            document.getElementById('upload-area').style.display = 'block';
-            document.getElementById('file-input').value = '';
-            document.getElementById('error-message').style.display = 'none';
-            document.getElementById('image-preview').style.display = 'none';
-        }
-
-        // Reset video form
-        function resetVideoForm() {
-            document.getElementById('video-results').style.display = 'none';
-            document.getElementById('video-upload-area').style.display = 'block';
-            document.getElementById('video-file-input').value = '';
-            document.getElementById('video-error-message').style.display = 'none';
-            document.getElementById('result-video-player').src = '';
-        }
-
-
-        async function loadHistory() {
-            try {
-                const response = await fetch('/api/history');
-                const data = await response.json();
-                const tbody = document.getElementById('history-body');
-                tbody.innerHTML = '';
-
-                if (!Array.isArray(data) || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-500 py-8">Chưa có dữ liệu</td></tr>';
-                    return;
-                }
-
-                data.forEach(item => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${item.id || '-'}</td>
-                        <td class="font-semibold">${item.plate_text || '-'}</td>
-                        <td>${item.vehicle_type || '-'}</td>
-                        <td>${item.confidence ? (item.confidence * 100).toFixed(1) + '%' : '-'}</td>
-                        <td>${item.processing_time ? (item.processing_time * 1000).toFixed(0) + 'ms' : '-'}</td>
-                        <td>${item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : '-'}</td>
-                    `;
-                    tbody.appendChild(row);
-                });
-            } catch (error) {
-                document.getElementById('history-body').innerHTML = '<tr><td colspan="6" class="text-center text-red-500 py-8">Không tải được lịch sử</td></tr>';
-            }
-        }
-
-        async function loadStats() {
-            try {
-                const response = await fetch('/api/stats');
-                const data = await response.json();
-                document.getElementById('stat-total').textContent = data.total_detections || 0;
-                document.getElementById('stat-avg-conf').textContent = ((data.avg_confidence || 0) * 100).toFixed(1) + '%';
-                document.getElementById('stat-avg-time').textContent = ((data.avg_processing_time || 0) * 1000).toFixed(0) + 'ms';
-            } catch (error) {
-                console.error('Không tải được thống kê:', error);
-            }
-        }
-
-        // Tab switching
-        function switchTab(tabName) {
-            // Update tab buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                if (btn.getAttribute('onclick') === `switchTab('${tabName}')`) {
-                    btn.classList.add('active');
-                }
-            });
-
-            // Update tab content
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            document.getElementById(tabName + '-tab').classList.add('active');
-
-            // Load history if needed
-            if (tabName === 'history') {
-                loadHistory();
-                loadStats();
-            }
-        }
-
-</script>
+    <script src="/static/js/app.js"></script>
 </body>
 </html>
